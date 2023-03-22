@@ -1,8 +1,11 @@
 const express = require("express");
 const path = require("path")
 const http = require("http");
+const { formatMessage } = require("./utils/messages")
+const { userJoin, getCurrentUser, userLeave, getRoomUsers, } = require("./utils/users");
+
 const socketio = require("socket.io");
-const { Socket } = require("dgram");
+const admin = 'Admin'
 
 const app = express();
 const server = http.createServer(app)
@@ -15,25 +18,40 @@ const io = socketio(server)
 app.use(express.static(path.join(__dirname, "public")))
 
 // Run only when client connect
-io.on("connect", socket => {
+io.on("connection", socket => {
     console.log("New user is connected...")
-    //Welcome to current user 
-    socket.emit("message", "welcome to chat group!")
 
-    // Broadcast when a user connects
-    socket.broadcast.emit('message', "A user a joined the chat!")
+    socket.on('joinRoom', ({ username, room }) => {
+        const user = userJoin(socket.id, username, room);
+
+        socket.join(user.room);
+        //Welcome to current user 
+        socket.emit("message", formatMessage(admin, 'Welcome to group chat'))
+
+        // Broadcast when a user connects
+        socket.broadcast.to(user.room).emit('message', formatMessage(admin, ` ${user.username} has joined the chat!`))
+
+        // listen for the chat message
+        socket.on('chatMessage', msg => {
+            // console.log(msg)
+            const user = getCurrentUser(socket.id);
+            io.to(user.room).emit('message', formatMessage(user.username, msg))
+        })
+    })
+
+
+
+
 
     // Runs when a clients disconnect
     socket.on("disconnect", () => {
-        console.log("A user is left the chat...")
-        io.emit('message', 'A user has left the chat')
+        const user=userLeave(socket.id)
+        if(user){
+            console.log("A user is left the chat...")
+            io.to(user.room).emit('message', formatMessage(admin, ` ${user.username} has left the chat!`))
+        }
+        
     })
-    // listen for the chat message
-    socket.on('chatMessage', msg => {
-        // console.log(msg)
-        io.emit('message',msg)
-    })
-
 
 })
 
